@@ -1,0 +1,380 @@
+#!/bin/bash
+# bashsupport disable=BP5001
+
+declare -A __console_input_option_shorts
+declare -A __console_input_option_longs
+declare -A __console_input_option_defaults
+declare -A __console_input_option_array_key_count
+declare -A __console_input_option_types
+declare -A __console_input_option_values
+declare -A __console_input_argument_types
+declare -A __console_input_argument_modes
+declare -A __console_input_argument_defaults
+declare -a __console_input_argument_keys
+declare -a __console_input_argument_items
+declare -A __console_input_argument_values
+declare -- __console_input_argument_count
+declare -- __console_input_argument_name_latest
+
+#######################################
+# description
+# Globals:
+#   __console_input_argument_count
+#   __console_input_argument_defaults
+#   __console_input_argument_items
+#   __console_input_argument_keys
+#   __console_input_argument_modes
+#   __console_input_argument_name_latest
+#   __console_input_argument_types
+#   __console_input_argument_values
+#   __console_input_option_array_key_count
+#   __console_input_option_defaults
+#   __console_input_option_longs
+#   __console_input_option_shorts
+#   __console_input_option_types
+#   __console_input_option_values
+# Arguments:
+#  None
+#######################################
+function console::input::restart() {
+  __console_input_option_shorts=()
+  __console_input_option_longs=()
+  __console_input_option_defaults=()
+  __console_input_option_array_key_count=()
+  __console_input_option_types=()
+  __console_input_option_values=()
+  __console_input_argument_types=()
+  __console_input_argument_modes=()
+  __console_input_argument_defaults=()
+  __console_input_argument_keys=()
+  __console_input_argument_items=()
+  __console_input_argument_values=()
+  __console_input_argument_count=0
+  __console_input_argument_name_latest=
+}
+
+#######################################
+# description
+# Globals:
+#   token
+# Arguments:
+#  None
+#######################################
+function token_quote() {
+  local quoted=()
+  for token; do
+    quoted+=("$(printf '%q' "$token")")
+  done
+  printf '%s\n' "${quoted[*]}"
+}
+
+#######################################
+# description
+# Globals:
+#   __console_input_option_defaults
+#   __console_input_option_longs
+#   __console_input_option_shorts
+#   __console_input_option_types
+# Arguments:
+#   1
+#   2
+#   3
+#   4
+#   5
+#######################################
+function console::input::option_definition() {
+  local name="${1##--}"
+  local long="${1##--}"
+  local short="${2##-}"
+  local type="$3"
+  local default="$4"
+
+  if [[ ! $type =~ ^(bool|scalar|array)$ ]]; then
+     echo "The type {$type} is not available!" >&2
+     return 3
+  fi
+
+  __console_input_option_shorts[$name]="$short"
+  __console_input_option_longs[$name]="$long"
+  __console_input_option_defaults[$name]="$default"
+  __console_input_option_types[$name]="$type"
+}
+
+#######################################
+# description
+# Globals:
+#   __console_input_argument_defaults
+#   __console_input_argument_keys
+#   __console_input_argument_modes
+#   __console_input_argument_types
+# Arguments:
+#   1
+#   2
+#   3
+#   4
+#######################################
+function console::input::argument_definition() {
+  local name="$1"
+  local type="$2"
+  local mode="$3"
+  local default="$4"
+  __console_input_argument_keys+=("$name")
+  __console_input_argument_types[$name]="$type"
+  __console_input_argument_modes[$name]="$mode"
+  __console_input_argument_defaults[$name]="$default"
+}
+
+#######################################
+# description
+# Arguments:
+#   1
+# Returns:
+#   0 ...
+#   1 ...
+#######################################
+function console::check::is_bool() {
+  local value="$1"
+
+  [[ $value == true || $value == false ]]
+
+  return $?
+}
+
+#######################################
+# description
+# Globals:
+#   __console_input_types
+#   __console_input_values
+#   keys
+# Arguments:
+#   1
+#   2
+# Returns:
+#   0 ...
+#   1 ...
+#   2 Error type option definition
+#   3 Error value type
+#######################################
+function console::input::option_set() {
+  local key="$1"
+  local type=${__console_input_option_types[$key]}
+  local value="$2"
+
+  if [[ $type == "bool" ]] && console::check::is_bool "$value"; then
+    __console_input_option_values[$key]=$value
+    return 0
+  elif [[ $type == "bool" ]]; then
+    echo "value {$value} for {$key} option not is bool..." >&2
+    return 3
+  fi
+
+  if [[ $value =~ -.* ]]; then
+    echo "non defined value for {$key} option..." >&2
+    return 2
+  fi
+
+  if [[ $type == "scalar" ]]; then
+    __console_input_option_values[$key]="$value"
+    return 1
+  fi
+
+  if [[ $type == "array" ]]; then
+    if [[ -n ${__console_input_option_array_key_count[$key]} ]]; then
+      __console_input_option_array_key_count[$key]=$((${__console_input_option_array_key_count[$key]} + 1))
+    else
+      __console_input_option_array_key_count[$key]=0
+    fi
+    __console_input_option_values[$key,${__console_input_option_array_key_count[$key]}]="$value"
+    return 1
+  fi
+
+  # When $type
+  echo "'$type' type definition for {$key} option is invalid..." >&2
+  return 2
+}
+
+#######################################
+# Parse console parameters definition into an option and argument array.
+# Globals:
+#   __console_input_option_longs
+#   __console_input_option_shorts
+# Arguments:
+#  None
+#######################################
+function console::input::parse() {
+  local option_allow=true
+  while [[ $# -gt 0 ]]; do
+    declare -i count=0
+    local option="$1"
+    local option_key
+
+    if [[ $option_allow == true ]]; then
+      for option_key in "${!__console_input_option_longs[@]}"; do
+      local long_option=${__console_input_option_longs[$option_key]}
+      local short_option=${__console_input_option_shorts[$option_key]}
+      local type_option=${__console_input_option_types[$option_key]}
+
+#      if [[ -n $short_option && $option == "-${short_option}" && $type_option != "bool" && -z "$2" ]]; then
+#        echo "value for {$short_option} is required!" >&2
+#        return 3
+#      fi
+
+      if [[ -n $short_option && $option =~ ^-${short_option}$ && $type_option == "bool" ]]; then
+        console::input::option_set "$option_key" true
+        count=1
+      elif [[ -n $short_option && $option == "-${short_option}" && $type_option != "bool"  && -n $2  ]]; then
+        console::input::option_set "$option_key" "$2"
+        count=2
+      elif [[ -n $short_option && $option == "-${short_option}" ]]; then
+        echo "option {$option}  require value!" >&2
+        return 4
+      elif [[ -n $short_option && $option =~ ^-[a-zA-Z0-9]*${short_option}[a-zA-Z0-9]*$ && $type_option == "bool" ]]; then
+        console::input::option_set "$option_key" true
+        count=1
+      elif [[ $option == "--$long_option" && $type_option == 'bool' ]]; then
+        console::input::option_set "$option_key" true
+        count=1
+      elif [[ $option == "--$long_option" && -z "$2" ]]; then
+        echo "The $long_option value is required!"
+        return 4
+      elif [[ $option == "--$long_option" ]]; then
+        console::input::option_set "$option_key" "$2"
+        count=2
+      elif [[ $option =~ "--$long_option=".* ]]; then
+        console::input::option_set "$option_key" "${option#"--$long_option="}"
+        count=1
+      fi
+    done
+    fi
+
+    if [[ $option == "--" ]]; then
+      shift
+      option_allow=false
+      continue
+    elif [[ $count -gt 0 && $option_allow == true ]]; then
+      shift $count
+      continue
+    elif [[ $option =~ -.* && $option_allow == true ]]; then
+      echo "option {$option} is invalid." >&2
+      return 4
+    fi
+
+    if [[ -n "${__console_input_argument_keys[$__console_input_argument_count]}" ]]; then
+      __console_input_argument_name_latest="${__console_input_argument_keys[$__console_input_argument_count]}"
+    fi
+
+    local type="${__console_input_argument_types[$__console_input_argument_name_latest]}"
+
+    if [[ $__console_input_argument_count -ge ${#__console_input_argument_keys[@]} && $type != "array" ]]; then
+      echo "non arguments" >&2
+      return 4
+    fi
+
+    __console_input_argument_count=$(("$__console_input_argument_count" + 1))
+    __console_input_argument_items+=("$option")
+
+    local key
+
+    if [[ "$type" == "scalar" ]]; then
+      key="$__console_input_argument_name_latest"
+    elif [[ "$type" == "array" ]]; then
+      key="$__console_input_argument_name_latest,$__console_input_argument_count"
+    fi
+
+    __console_input_argument_values[$key]="$option"
+
+    shift
+  done
+}
+
+#######################################
+# Get input value
+# Globals:
+#   __console_input_values
+# Arguments:
+#   1 request key
+#   2 variable name
+# Returns:
+#   0 when is successful
+#   1 when request is bad
+#######################################
+function console::input::option_ref() {
+  local subset
+  local from_key
+  local from_value
+  local to_key
+  local key
+
+  from_key="$1"
+  if echo "$from_key" | grep "[^A-Za-z_,0-9]"; then
+    echo "The '$from_key' not is an input key valid!" >&2
+    return 1
+  fi
+
+  to_key="$2"
+  if echo "$to_key" | grep "[^A-Za-z_,0-9]"; then
+    echo "The '$to_key' not is a name var valid!" >&2
+    return 1
+  fi
+
+  if [[ ${__console_input_option_values[$from_key]+_} ]]; then
+    from_value=$(token_quote "${__console_input_option_values[$from_key]}")
+    eval "$to_key=${from_value}"
+    return 0
+  fi
+
+  subset=$(printf '%s\n' "${!__console_input_option_values[@]}" | grep "$from_key,")
+  if [[ -n $subset ]]; then
+    while IFS= read -r key; do
+      from_value=$(token_quote "${__console_input_option_values[$key]}")
+      eval "$to_key+=(${from_value})"
+    done <<<"$subset"
+    return 0
+  fi
+}
+
+#######################################
+# description
+# Globals:
+#   __console_input_argument_values
+# Arguments:
+#   1
+#   2
+# Returns:
+#   0 ...
+#   1 ...
+#######################################
+function console::input::argument_ref() {
+  local subset
+  local from_key
+  local from_value
+  local to_key
+  local key
+
+  from_key="$1"
+  if echo "$from_key" | grep "[^A-Za-z_,0-9]"; then
+    echo "The '$from_key' not is an input key valid!" >&2
+    return 1
+  fi
+
+  to_key="$2"
+  if echo "$to_key" | grep "[^A-Za-z_,0-9]"; then
+    echo "The '$to_key' not is a name var valid!" >&2
+    return 1
+  fi
+
+  if [[ ${__console_input_argument_values[$from_key]+_} ]]; then
+    from_value=$(token_quote "${__console_input_argument_values[$from_key]}")
+    eval "$to_key=${from_value}"
+    return 0
+  fi
+
+  subset=$(printf '%s\n' "${!__console_input_argument_values[@]}" | grep "$from_key,")
+  if [[ -n $subset ]]; then
+    while IFS= read -r key; do
+      from_value=$(token_quote "${__console_input_argument_values[$key]}")
+      eval "$to_key+=(${from_value})"
+    done <<<"$subset"
+    return 0
+  fi
+}
