@@ -3,29 +3,7 @@
 
 ### Example
 
-Let's simulate `plocate` command, like so:
-
-```bash
-# my_locate.sh
-
-# long option definitions
-console::input::argument_definition pattern array required
-
-# short option definitions
-console::input::option_definition   basename    b   scalar
-console::input::option_definition   count       c   scalar
-console::input::option_definition   database    d   scalar /var/lib/plocate/plocate.db
-console::input::option_definition   ignore-case i   scalar
-console::input::option_definition   limit       l   scalar
-console::input::option_definition   null        0   scalar
-console::input::option_definition   regexp      r   scalar
-console::input::option_definition   regex       -   scalar
-console::input::option_definition   wholename   w   scalar
-console::input::option_definition   help        -   bool
-console::input::option_definition   version     -   bool
-```
-
-The definition of the parameters would be something similar to this:
+Let's simulate the `locate` command. The command signature is something like this:
 
 ```text
 Usage: plocate [OPTION]... PATTERN...
@@ -41,6 +19,28 @@ Usage: plocate [OPTION]... PATTERN...
   -w, --wholename        search the entire path name (default; see -b)
       --help             print this help
       --version          print version information
+```
+
+In our script file we will define the parameters, like so:
+
+```bash
+# my_locate.sh
+
+# argument definitions
+console::input::argument_definition pattern array required
+
+# option definitions
+console::input::option_definition   basename    b   scalar
+console::input::option_definition   count       c   scalar
+console::input::option_definition   database    d   scalar /var/lib/plocate/plocate.db
+console::input::option_definition   ignore-case i   scalar
+console::input::option_definition   limit       l   scalar
+console::input::option_definition   null        0   scalar
+console::input::option_definition   regexp      r   scalar
+console::input::option_definition   regex       -   scalar
+console::input::option_definition   wholename   w   scalar
+console::input::option_definition   help        -   bool
+console::input::option_definition   version     -   bool
 ```
 
 Now ask the tool to process the input, something like this:
