@@ -26,6 +26,9 @@ In our script file we will define the parameters, like so:
 ```bash
 # my_locate.sh
 
+# clear previous entries
+console::input::clear
+
 # argument definitions
 console::input::argument_definition pattern array required
 
@@ -65,8 +68,8 @@ That easy you will have defined the parameters accepted by your script. Now all 
 declare -- locate_count=
 declare -A locate_pattern=()
 
+console::input::option_ref count locate_count
 console::input::argument_ref pattern locate_pattern
-console::input::argument_ref count locate_count
 ```
 
 and to enjoy...

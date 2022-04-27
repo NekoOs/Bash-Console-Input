@@ -36,7 +36,7 @@ declare -- __console_input_argument_name_latest
 # Arguments:
 #  None
 #######################################
-function console::input::restart() {
+function console::input::clear() {
   __console_input_option_shorts=()
   __console_input_option_longs=()
   __console_input_option_defaults=()
